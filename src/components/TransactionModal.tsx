@@ -28,7 +28,7 @@ function initialForm(t: Transaction | null | undefined): FormState {
     type: t?.type ?? "expense",
     amount: t ? String(t.amount) : "",
     date: t?.date ?? todayISO(),
-    category: t && t.type !== "transfer" ? t.category : "Food",
+    category: t && t.type !== "transfer" ? t.category : "",
     note: t?.note ?? "",
     description: t?.description ?? "",
     method: m.choice,
@@ -55,9 +55,8 @@ export function TransactionModal({ editing, onClose }: { editing?: Transaction |
 
   const changeType = (type: TxType) => {
     setF((s) => {
-      const defaults = type === "income" ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
       const fits = s.type !== "transfer" && type === s.type;
-      return { ...s, type, category: type === "transfer" || fits ? s.category : (defaults[0] ?? "") };
+      return { ...s, type, category: type === "transfer" || fits ? s.category : "" };
     });
     setError("");
   };
