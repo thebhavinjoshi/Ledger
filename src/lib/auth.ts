@@ -11,6 +11,9 @@ const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID ?? "";
 // (installed apps cannot keep secrets), so it is fine to ship in the build.
 const CLIENT_SECRET = import.meta.env.VITE_GOOGLE_CLIENT_SECRET ?? "";
 
+const SECRET_HELP =
+  "Google rejected this app’s client secret. Check that the GOOGLE_CLIENT_SECRET repository secret is set, belongs to the same Desktop client as GOOGLE_CLIENT_ID, then run the release build again and reinstall.";
+
 const SCOPES = "openid email https://www.googleapis.com/auth/spreadsheets";
 const REFRESH_KEY = "google_refresh_token";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
@@ -47,6 +50,9 @@ async function tokenRequest(params: Record<string, string>): Promise<TokenRespon
   const json = (await res.json().catch(() => ({}))) as Record<string, string>;
   if (!res.ok) {
     if (json.error === "invalid_grant") throw new AuthError("Your Google session expired. Please sign in again.");
+    if (json.error === "invalid_client" || /client_secret/i.test(json.error_description ?? "")) {
+      throw new Error(SECRET_HELP);
+    }
     throw new Error(json.error_description ?? json.error ?? `Google returned an error (${res.status}).`);
   }
   return json as unknown as TokenResponse;
@@ -97,9 +103,15 @@ async function challengeFor(verifier: string): Promise<{ challenge: string; meth
   return { challenge: base64url(new Uint8Array(digest)), method: "S256" };
 }
 
-export async function signIn(): Promise<void> {
+/**
+ * `copyLink: true` copies the Google sign-in address to the clipboard instead of opening the
+ * system default browser, so it can be pasted into any browser or profile.
+ */
+export async function signIn(opts: { copyLink?: boolean } = {}): Promise<void> {
   const platform = getPlatform();
   if (!CLIENT_ID) throw new Error("Google sign-in is not configured. Set VITE_GOOGLE_CLIENT_ID (see the README).");
+
+  if (!CLIENT_SECRET) throw new Error(SECRET_HELP);
 
   const verifier = randomString(48);
   const state = randomString(24);
@@ -116,9 +128,18 @@ export async function signIn(): Promise<void> {
     code_challenge_method: method,
     state,
     access_type: "offline",
-    prompt: "consent",
+    // select_account: always show Google’s account picker, so another Gmail can be chosen.
+    prompt: "select_account consent",
   });
-  const code = await platform.oauth.wait(`https://accounts.google.com/o/oauth2/v2/auth?${params}`, state);
+  const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
+  if (opts.copyLink) {
+    try {
+      await navigator.clipboard.writeText(authUrl);
+    } catch {
+      throw new Error("Couldn’t copy the sign-in link. Use “Continue with Google” instead.");
+    }
+  }
+  const code = await platform.oauth.wait(authUrl, state, !opts.copyLink);
   const t = await tokenRequest({
     grant_type: "authorization_code",
     code,

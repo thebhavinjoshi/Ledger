@@ -60,6 +60,9 @@ export default function App() {
       },
       signOut: async () => {
         await signOut();
+        // Forget the account's sheet, so the next sign-in starts from the sheet picker.
+        if (prefs.spreadsheetId) clearCache(prefs.spreadsheetId);
+        update({ spreadsheetId: "", spreadsheetTitle: "", email: "" });
         setNotice("");
         setStage("connect");
       },
